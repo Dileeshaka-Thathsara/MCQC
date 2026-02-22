@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gemini-Powered MCQ Cleaner</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; padding: 20px; }
+        .container { max-width: 1400px; margin: 0 auto; background: white; padding: 40px; border-radius: 20px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
+        h1 { text-align: center; color: #667eea; margin-bottom: 10px; font-size: 2.2em; }
+        .badge { display: inline-block; background: linear-gradient(135deg, #4285f4 0%, #34a853 100%); color: white; padding: 4px 12px; border-radius: 20px; font-size: 0.4em; font-weight: 600; margin-left: 10px; vertical-align: middle; }
+        .subtitle { text-align: center; color: #666; margin-bottom: 30px; }
+        .api-section { background: #fff3cd; border: 2px solid #ffc107; border-left: 4px solid #ff9800; padding: 20px; border-radius: 8px; margin-bottom: 25px; }
+        .api-section h3 { color: #856404; margin-bottom: 15px; }
+        .api-input-group { display: flex; gap: 10px; align-items: center; margin-top: 10px; }
+        .api-section input { flex: 1; padding: 12px; border: 2px solid #ffc107; border-radius: 6px; font-size: 1em; }
+        .test-btn { background: #28a745; color: white; border: none; padding: 12px 24px; border-radius: 6px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+        .test-btn:hover { background: #218838; }
+        .api-section a { color: #0066cc; font-weight: 600; }
+        .api-section ol { margin: 15px 0 15px 25px; }
+        .api-section li { margin-bottom: 8px; color: #856404; }
+
+        .tabs { display: flex; gap: 0; margin-bottom: 0; border-bottom: 3px solid #667eea; }
+        .tab-btn { padding: 12px 28px; border: none; background: #f0f0f0; color: #666; font-size: 1em; font-weight: 600; cursor: pointer; border-radius: 8px 8px 0 0; margin-right: 4px; transition: all 0.2s; }
+        .tab-btn.active { background: #667eea; color: white; }
+        .tab-btn:hover:not(.active) { background: #dde; }
+        .tab-panel { display: none; padding-top: 25px; }
+        .tab-panel.active { display: block; }
+
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-bottom: 20px; }
+        .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; margin-bottom: 20px; }
+        @media (max-width: 900px) { .grid, .grid-3 { grid-template-columns: 1fr; } }
+        .section { display: flex; flex-direction: column; }
+        label { font-weight: 600; color: #4a5568; margin-bottom: 8px; font-size: 0.95em; display: block; }
+        textarea { width: 100%; height: 400px; padding: 15px; border: 2px solid #e2e8f0; border-radius: 8px; font-family: 'Courier New', monospace; font-size: 13px; resize: vertical; transition: border-color 0.3s; }
+        textarea:focus { outline: none; border-color: #667eea; box-shadow: 0 0 0 3px rgba(102,126,234,0.1); }
+        textarea:read-only { background: #f7fafc; }
+
+        .buttons { display: flex; gap: 15px; margin-top: 15px; }
+        button { flex: 1; padding: 12px 24px; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; transition: all 0.3s; font-size: 1em; }
+        .btn-ai { background: linear-gradient(135deg, #4285f4 0%, #34a853 100%); color: white; box-shadow: 0 4px 15px rgba(66,133,244,0.4); }
+        .btn-ai:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(66,133,244,0.6); }
+        .btn-ai:disabled { opacity: 0.6; cursor: not-allowed; }
+        .btn-convert { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; box-shadow: 0 4px 15px rgba(102,126,234,0.4); }
+        .btn-convert:hover:not(:disabled) { transform: translateY(-2px); }
+        .btn-convert:disabled { opacity: 0.6; cursor: not-allowed; }
+        .btn-clear { background: white; border: 2px solid #e2e8f0; color: #4a5568; flex: 0 0 auto; padding: 12px 20px; }
+        .btn-clear:hover { background: #f7fafc; }
+        .btn-download { background: linear-gradient(135deg, #48bb78 0%, #38a169 100%); color: white; box-shadow: 0 4px 15px rgba(72,187,120,0.4); }
+        .btn-download:hover { transform: translateY(-2px); }
+
+        .loading { display: none; text-align: center; padding: 20px; background: #e3f2fd; border-radius: 8px; margin-top: 20px; }
+        .loading.active { display: block; }
+        .spinner { border: 3px solid #f3f3f3; border-top: 3px solid #4285f4; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 0 auto 10px; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        .message { padding: 15px; border-radius: 8px; margin-top: 15px; display: none; }
+        .message.success { background: #f0fff4; border-left: 4px solid #48bb78; color: #22543d; display: block; }
+        .message.error { background: #fff5f5; border-left: 4px solid #f56565; color: #742a2a; display: block; }
+        .message.info { background: #e3f2fd; border-left: 4px solid #2196f3; color: #1565c0; display: block; }
+
+        .info-box { background: #ebf4ff; border: 1px solid #bee3f8; border-left: 4px solid #4299e1; padding: 20px; border-radius: 8px; margin-top: 30px; }
+        .info-box h3 { color: #2c5282; margin-bottom: 15px; }
+        .info-box ul { margin-left: 20px; color: #2d3748; }
+        .info-box li { margin-bottom: 8px; }
+
+        .step-badge { display: inline-block; background: #667eea; color: white; border-radius: 50%; width: 28px; height: 28px; text-align: center; line-height: 28px; font-weight: 700; margin-right: 8px; font-size: 0.9em; }
+        .section-divider { border: none; border-top: 2px dashed #e2e8f0; margin: 25px 0; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>🤖 Gemini-Powered MCQ Cleaner <span class="badge">GEMINI AI</span></h1>
+    <p class="subtitle">Paste combined MCQ + Answer text once → Gemini separates & formats both → Export CSV</p>
+
+    <div class="api-section">
+        <h3>🔑 Setup: Get Your Free Gemini API Key</h3>
+        <ol>
+            <li>Go to <a href="https://aistudio.google.com/app/apikey" target="_blank">Google AI Studio</a></li>
+            <li>Click "Get API Key" → "Create API key in new project"</li>
+            <li>Copy the API key (starts with "AIza...")</li>
+            <li>Paste it below and click "Test Connection"</li>
+        </ol>
+        <div class="api-input-group">
+            <input type="text" id="apiKey" placeholder="Paste your Gemini API key here (starts with AIza...)">
+            <button class="test-btn" onclick="testApiKey()">🔍 Test Connection</button>
+        </div>
+        <div id="apiMessage"></div>
+    </div>
+
+    <div class="tabs">
+        <button class="tab-btn active" id="tab-btn-clean" onclick="switchTab('clean', this)">✨ Step 1: Clean with Gemini</button>
+        <button class="tab-btn" id="tab-btn-export" onclick="switchTab('export', this)">📤 Step 2: Export CSV</button>
+    </div>
+
+    <!-- TAB 1: CLEAN -->
+    <div class="tab-panel active" id="tab-clean">
+        <p style="color:#555; margin-bottom:20px; padding:12px; background:#f0f4ff; border-radius:8px; border-left:4px solid #667eea;">
+            💡 <strong>Paste your raw text below</strong> — it can contain questions, options, answer keys, explanations, and reviews all mixed together. Gemini will intelligently separate and format them into two clean sections.
+        </p>
+
+        <!-- INPUT -->
+        <div class="section" style="margin-bottom:20px;">
+            <label><span class="step-badge">1</span>Paste Your Raw MCQ + Answer Review Text</label>
+            <textarea id="raw-input" placeholder="Paste everything here — questions, options, answers, True/False reviews, explanations — all mixed together is fine!
+
+Example of what you might paste:
+1. A 35-year-old presents with...
+   A. Appendicitis
+   B. Cholecystitis
+   C. Peptic ulcer
+   D. Pancreatitis
+   E. Diverticulitis
+Answer: B
+A. False — Appendicitis presents with periumbilical pain...
+B. True — Cholecystitis is the correct answer because...
+C. False — Peptic ulcer pain is epigastric...
+..."></textarea>
+            <div class="buttons">
+                <button class="btn-ai" onclick="cleanWithGemini()" id="cleanBtn">✨ Clean & Separate with Gemini AI</button>
+                <button class="btn-clear" onclick="clearAll()">🗑️ Clear All</button>
+            </div>
+        </div>
+
+        <div class="loading" id="main-loading">
+            <div class="spinner"></div>
+            <strong>Gemini AI is processing your text...</strong>
+            <p>Separating questions from reviews and formatting both. This may take 15–45 seconds.</p>
+        </div>
+        <div id="main-message" class="message"></div>
+
+        <hr class="section-divider" id="results-divider" style="display:none;">
+
+        <!-- OUTPUT: two columns -->
+        <div class="grid" id="results-grid" style="display:none;">
+            <div class="section">
+                <label><span class="step-badge">Q</span>Cleaned MCQs (Questions + Options Only)</label>
+                <textarea id="mcq-cleaned" readonly placeholder="Cleaned questions and options will appear here..."></textarea>
+            </div>
+            <div class="section">
+                <label><span class="step-badge">R</span>Cleaned Answer Reviews (True/False + Explanations)</label>
+                <textarea id="ans-cleaned" readonly placeholder="Formatted answer reviews will appear here..."></textarea>
+            </div>
+        </div>
+
+        <div class="buttons" id="go-export-btn" style="display:none; margin-top:5px;">
+            <button class="btn-convert" onclick="goToExport()">📤 Proceed to Export CSV →</button>
+        </div>
+    </div>
+
+    <!-- TAB 2: EXPORT -->
+    <div class="tab-panel" id="tab-export">
+        <div class="grid" style="margin-bottom:20px;">
+            <div class="section">
+                <label>📋 MCQs (from Step 1)</label>
+                <textarea id="export-mcq-preview" readonly placeholder="Complete Step 1 first..."></textarea>
+            </div>
+            <div class="section">
+                <label>📋 Answer Reviews (from Step 1)</label>
+                <textarea id="export-ans-preview" readonly placeholder="Complete Step 1 first..."></textarea>
+            </div>
+        </div>
+
+        <div class="buttons" style="margin-bottom:20px;">
+            <button class="btn-convert" onclick="generateCSV()" id="genCsvBtn">📊 Generate Combined CSV</button>
+            <button class="btn-clear" onclick="clearExport()">🗑️ Clear CSV</button>
+        </div>
+
+        <div class="section">
+            <label>📤 Combined CSV Output</label>
+            <textarea id="csv-output" readonly style="height:280px;" placeholder="CSV will appear here...&#10;&#10;Columns: MCQ_Number, Type, Label, Text, TrueFalse, Explanation&#10;&#10;Types:&#10;  Question — the question stem&#10;  Option   — answer choice A–E&#10;  Review   — True/False + explanation for each option"></textarea>
+            <div class="buttons" style="margin-top:15px;">
+                <button class="btn-download" onclick="downloadCSV()" id="downloadBtn" style="display:none;">💾 Download CSV File</button>
+            </div>
+        </div>
+        <div id="export-message" class="message"></div>
+    </div>
+
+    <div class="info-box">
+        <h3>🚀 How to Use</h3>
+        <ul>
+            <li><strong>Step 1:</strong> Paste your raw text (MCQs + answers + reviews all together) → click "Clean & Separate with Gemini AI"</li>
+            <li><strong>Step 2:</strong> Review the two cleaned outputs, then click "Proceed to Export CSV"</li>
+            <li><strong>Step 3:</strong> Click "Generate Combined CSV" → Download!</li>
+            <li><strong>CSV columns:</strong> MCQ_Number | Type (Question / Option / Review) | Label (A–E) | Text | TrueFalse | Explanation</li>
+        </ul>
+    </div>
+</div>
+
+<script>
+    window.onload = function() {
+        var saved = localStorage.getItem('gemini_api_key');
+        if (saved) document.getElementById('apiKey').value = saved;
+    };
+
+    function switchTab(name, btn) {
+        document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
+        document.querySelectorAll('.tab-panel').forEach(function(p) { p.classList.remove('active'); });
+        document.getElementById('tab-' + name).classList.add('active');
+        btn.classList.add('active');
+        if (name === 'export') {
+            document.getElementById('export-mcq-preview').value = document.getElementById('mcq-cleaned').value;
+            document.getElementById('export-ans-preview').value = document.getElementById('ans-cleaned').value;
+        }
+    }
+
+    function goToExport() {
+        document.getElementById('export-mcq-preview').value = document.getElementById('mcq-cleaned').value;
+        document.getElementById('export-ans-preview').value = document.getElementById('ans-cleaned').value;
+        document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
+        document.querySelectorAll('.tab-panel').forEach(function(p) { p.classList.remove('active'); });
+        document.getElementById('tab-export').classList.add('active');
+        document.getElementById('tab-btn-export').classList.add('active');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    async function testApiKey() {
+        var apiKey = document.getElementById('apiKey').value.trim();
+        var messageDiv = document.getElementById('apiMessage');
+        if (!apiKey) { messageDiv.className = 'message error'; messageDiv.innerHTML = '❌ Please paste your API key first!'; return; }
+        if (!apiKey.startsWith('AIza')) { messageDiv.className = 'message info'; messageDiv.innerHTML = '⚠️ API key should start with "AIza"'; return; }
+        messageDiv.className = 'message info'; messageDiv.innerHTML = '🔄 Testing connection...';
+        try {
+            var resp = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' + apiKey, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ contents: [{ parts: [{ text: 'Say Hello.' }] }] })
+            });
+            var data = await resp.json();
+            if (data.candidates && data.candidates[0]) {
+                localStorage.setItem('gemini_api_key', apiKey);
+                messageDiv.className = 'message success';
+                messageDiv.innerHTML = '✅ <strong>API Key is valid!</strong> Ready to use.';
+            } else {
+                messageDiv.className = 'message error';
+                messageDiv.innerHTML = '❌ ' + (data.error ? data.error.message : 'Unknown error');
+            }
+        } catch(e) {
+            messageDiv.className = 'message error';
+            messageDiv.innerHTML = '❌ Connection failed: ' + e.message;
+        }
+    }
+
+    async function cleanWithGemini() {
+        var input = document.getElementById('raw-input').value.trim();
+        if (!input) { showMsg('main-message', '❌ Please paste your MCQ text first!', 'error'); return; }
+
+        var apiKey = document.getElementById('apiKey').value.trim();
+        if (!apiKey) { showMsg('main-message', '❌ Please enter your Gemini API key first!', 'error'); return; }
+
+        var loading = document.getElementById('main-loading');
+        var btn = document.getElementById('cleanBtn');
+        loading.classList.add('active');
+        btn.disabled = true;
+        document.getElementById('results-divider').style.display = 'none';
+        document.getElementById('results-grid').style.display = 'none';
+        document.getElementById('go-export-btn').style.display = 'none';
+        showMsg('main-message', '', '');
+
+        var prompt = `You are an expert MCQ formatter. The text below contains MCQs and their answer reviews mixed together. Your job is to produce TWO clearly separated sections from this single input.
+
+===== SECTION 1: CLEANED MCQs =====
+Rules:
+1. Number MCQs sequentially starting from 1
+2. Each MCQ must have EXACTLY 5 options labeled A–E
+3. Format:
+   [Number]. [Reference if present]
+   [Question text]
+   - A. [Option text]
+   - B. [Option text]
+   - C. [Option text]
+   - D. [Option text]
+   - E. [Option text]
+4. Extract ONLY the question stem and the 5 answer options
+5. Do NOT include: answer keys, correct answer markers, explanations, True/False labels, or any post-option commentary
+6. Keep all original medical/technical wording unchanged
+7. Fix numbering, spacing, and formatting issues
+
+===== SECTION 2: ANSWER REVIEWS =====
+Rules:
+1. Number each MCQ sequentially starting from 1 (matching Section 1 numbering)
+2. Each MCQ must have EXACTLY 5 lines labeled A–E
+3. Format:
+   [Number]. Answer Review
+   * A: [True/False] — [Explanation]
+   * B: [True/False] — [Explanation]
+   * C: [True/False] — [Explanation]
+   * D: [True/False] — [Explanation]
+   * E: [True/False] — [Explanation]
+4. Always write exactly "True" or "False" — never T/F or abbreviations
+5. Keep all original explanation text unchanged
+6. Fix numbering, spacing, and formatting issues
+
+OUTPUT FORMAT — use these exact delimiters so the output can be reliably parsed:
+===MCQ_START===
+[all cleaned MCQs here]
+===MCQ_END===
+===REVIEW_START===
+[all answer reviews here]
+===REVIEW_END===
+
+INPUT TEXT:
+${input}`;
+
+        try {
+            var resp = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' + apiKey, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+            });
+            var data = await resp.json();
+
+            if (data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts[0]) {
+                localStorage.setItem('gemini_api_key', apiKey);
+                var result = data.candidates[0].content.parts[0].text;
+
+                var mcqMatch = result.match(/===MCQ_START===([\s\S]*?)===MCQ_END===/);
+                var revMatch = result.match(/===REVIEW_START===([\s\S]*?)===REVIEW_END===/);
+
+                var mcqText = mcqMatch ? mcqMatch[1].trim() : '';
+                var revText = revMatch ? revMatch[1].trim() : '';
+
+                if (!mcqText && !revText) {
+                    // fallback: try to split roughly in half
+                    mcqText = result.trim();
+                    revText = '';
+                    showMsg('main-message', '⚠️ Could not auto-detect sections — full output placed in MCQ field. You may manually split.', 'info');
+                } else {
+                    showMsg('main-message', '✅ Text cleaned and separated! Review the two outputs, then proceed to export.', 'success');
+                }
+
+                document.getElementById('mcq-cleaned').value = mcqText;
+                document.getElementById('ans-cleaned').value = revText;
+                document.getElementById('results-divider').style.display = 'block';
+                document.getElementById('results-grid').style.display = 'grid';
+                document.getElementById('go-export-btn').style.display = 'flex';
+
+            } else if (data.error) {
+                showMsg('main-message', '❌ Gemini error: ' + data.error.message, 'error');
+            } else {
+                showMsg('main-message', '❌ Unexpected response from Gemini. Try again.', 'error');
+            }
+        } catch(e) {
+            showMsg('main-message', '❌ Request failed: ' + e.message, 'error');
+        } finally {
+            loading.classList.remove('active');
+            btn.disabled = false;
+        }
+    }
+
+    function generateCSV() {
+        var mcqText = document.getElementById('export-mcq-preview').value.trim();
+        var ansText = document.getElementById('export-ans-preview').value.trim();
+        if (!mcqText && !ansText) { showMsg('export-message', '❌ Please complete Step 1 first!', 'error'); return; }
+
+        var csv = 'MCQ_Number,Type,Label,Text,TrueFalse,Explanation\n';
+
+        if (mcqText) {
+            var mcqs = parseMCQs(mcqText);
+            mcqs.forEach(function(mcq) {
+                csv += mcq.number + ',Question,,' + escCSV(mcq.question) + ',,\n';
+                mcq.options.forEach(function(opt) {
+                    csv += mcq.number + ',Option,' + opt.letter + ',' + escCSV(opt.text) + ',,\n';
+                });
+            });
+        }
+
+        if (ansText) {
+            var reviews = parseAnswerReviews(ansText);
+            reviews.forEach(function(rev) {
+                rev.answers.forEach(function(ans) {
+                    csv += rev.number + ',Review,' + ans.letter + ',,' + escCSV(ans.tf) + ',' + escCSV(ans.explanation) + '\n';
+                });
+            });
+        }
+
+        document.getElementById('csv-output').value = csv;
+        document.getElementById('downloadBtn').style.display = 'block';
+        var qCount = (csv.match(/,Question,/g) || []).length;
+        var rCount = (csv.match(/,Review,/g) || []).length;
+        showMsg('export-message', '✅ CSV generated! ' + qCount + ' question stems, ' + rCount + ' answer review rows.', 'success');
+    }
+
+    function parseMCQs(text) {
+        var lines = text.split('\n');
+        var mcqs = [], current = null, questionLines = [], options = [];
+        for (var i = 0; i < lines.length; i++) {
+            var line = lines[i].trim();
+            var mcqMatch = line.match(/^#{0,3}\s*\*{0,2}(\d+)\./);
+            if (mcqMatch) {
+                if (current) {
+                    if (!current.question && questionLines.length) current.question = questionLines.join(' ').trim();
+                    current.options = options;
+                    if (current.question) mcqs.push(current);
+                }
+                current = { number: parseInt(mcqMatch[1]), question: '', options: [] };
+                questionLines = []; options = [];
+                var rest = line.replace(/^#{0,3}\s*\*{0,2}\d+\.\s*/, '').trim();
+                if (rest) questionLines.push(rest);
+                continue;
+            }
+            if (!current) continue;
+            var optMatch = line.match(/^-?\s*[\(\[]?([A-E])[\.\)\]]\s+(.+)/i);
+            if (optMatch) {
+                if (!current.question && questionLines.length) current.question = questionLines.join(' ').trim();
+                options.push({ letter: optMatch[1].toUpperCase(), text: optMatch[2].trim() });
+            } else if (line && !line.startsWith('#') && options.length === 0) {
+                questionLines.push(line);
+            }
+        }
+        if (current) {
+            if (!current.question && questionLines.length) current.question = questionLines.join(' ').trim();
+            current.options = options;
+            if (current.question) mcqs.push(current);
+        }
+        return mcqs;
+    }
+
+    function parseAnswerReviews(text) {
+        var lines = text.split('\n');
+        var reviews = [], current = null;
+        for (var i = 0; i < lines.length; i++) {
+            var line = lines[i].trim();
+            var headerMatch = line.match(/^(\d+)\.\s*(?:Answer\s*Review)?$/i);
+            if (headerMatch) {
+                if (current) reviews.push(current);
+                current = { number: parseInt(headerMatch[1]), answers: [] };
+                continue;
+            }
+            if (!current) continue;
+            var ansMatch = line.match(/^\*?\s*([A-E])\s*[:\.\)]\s*(True|False|true|false|TRUE|FALSE)\s*[—\-–:]\s*(.*)/i);
+            if (ansMatch) {
+                var tf = ansMatch[2].charAt(0).toUpperCase() + ansMatch[2].slice(1).toLowerCase();
+                current.answers.push({ letter: ansMatch[1].toUpperCase(), tf: tf, explanation: ansMatch[3].trim() });
+            }
+        }
+        if (current) reviews.push(current);
+        return reviews;
+    }
+
+    function escCSV(str) {
+        if (!str) return '';
+        return '"' + String(str).replace(/"/g, '""') + '"';
+    }
+
+    function downloadCSV() {
+        var csv = document.getElementById('csv-output').value;
+        if (!csv) return;
+        var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        var link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = 'gemini_mcq_with_reviews.csv';
+        link.style.display = 'none';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        showMsg('export-message', '✅ CSV downloaded!', 'success');
+    }
+
+    function clearAll() {
+        document.getElementById('raw-input').value = '';
+        document.getElementById('mcq-cleaned').value = '';
+        document.getElementById('ans-cleaned').value = '';
+        document.getElementById('results-divider').style.display = 'none';
+        document.getElementById('results-grid').style.display = 'none';
+        document.getElementById('go-export-btn').style.display = 'none';
+        document.getElementById('main-message').className = 'message';
+        document.getElementById('main-message').innerHTML = '';
+    }
+
+    function clearExport() {
+        document.getElementById('csv-output').value = '';
+        document.getElementById('downloadBtn').style.display = 'none';
+        document.getElementById('export-message').className = 'message';
+        document.getElementById('export-message').innerHTML = '';
+    }
+
+    function showMsg(id, text, type) {
+        var el = document.getElementById(id);
+        el.className = type ? 'message ' + type : 'message';
+        el.innerHTML = text;
+    }
+</script>
+</body>
+</html>
